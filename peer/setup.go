@@ -36,6 +36,10 @@ var shutdown chan struct{}
 func Initialise(configuration *Configuration) error {
 	logrus.SetOutput(os.Stdout)
 	logrus.SetReportCaller(true)
+	logrus.SetFormatter(&logrus.TextFormatter{
+		DisableTimestamp: false,
+		FullTimestamp:    true,
+	})
 
 	globalData.Lock()
 	defer globalData.Unlock()

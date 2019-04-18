@@ -22,6 +22,10 @@ var (
 
 func main() {
 	logrus.SetOutput(os.Stdout)
+	logrus.SetFormatter(&logrus.TextFormatter{
+		DisableTimestamp: false,
+		FullTimestamp:    true,
+	})
 
 	configurationFile := defaultFile
 
