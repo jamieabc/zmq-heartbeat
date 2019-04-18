@@ -52,14 +52,15 @@ func main() {
 		}).Error("zmq.AuthStart error")
 	}
 
-	err = peer.Initialise(&masterConfiguration.Peering)
+	peerImpl := peer.NewPeer()
+	err = peerImpl.Initialise(&masterConfiguration.Peering)
 	if nil != err {
 		log.WithFields(logrus.Fields{
 			"error": err,
 		}).Error("peer initialise error")
 		return
 	}
-	defer peer.Finalise()
+	defer peerImpl.Finalise()
 
 	ch := make(chan os.Signal)
 	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)

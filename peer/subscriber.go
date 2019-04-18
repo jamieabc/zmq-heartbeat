@@ -9,7 +9,6 @@ import (
 	"github.com/bitmark-inc/bitmarkd/mode"
 	"github.com/bitmark-inc/bitmarkd/util"
 	"github.com/bitmark-inc/bitmarkd/zmqutil"
-	"github.com/bitmark-inc/logger"
 	"github.com/sirupsen/logrus"
 
 	zmq "github.com/pebbe/zmq4"
@@ -22,22 +21,33 @@ const (
 	heartbeatTimeout  = 2 * heartbeatInterval
 )
 
-type subscriber struct {
-	log     *logger.L
+type Subscriber interface {
+	Initialise(privateKey []byte, publicKey []byte, connections []Connection) error
+	Run(shutdown <-chan struct{})
+}
+
+type subscriberData struct {
+	log     *logrus.Entry
 	push    *zmq.Socket
 	pull    *zmq.Socket
 	clients []*zmqutil.Client
 }
 
-// initialise the subscriber
-func (sbsc *subscriber) initialise(privateKey []byte, publicKey []byte, connections []Connection) error {
+func NewSubscriber(log *logrus.Entry) Subscriber {
+	return &subscriberData{
+		log: log,
+	}
+}
 
-	log.Info("initialising…")
+// initialise the subscriber
+func (sbsc *subscriberData) Initialise(privateKey []byte, publicKey []byte, connections []Connection) error {
+
+	sbsc.log.Info("initialising…")
 
 	// validate connection count
 	connectionCount := len(connections)
 	if 0 == connectionCount {
-		log.Error("zero connections are available")
+		sbsc.log.Error("zero connections are available")
 		return fault.ErrNoConnectionsAvailable
 	}
 
@@ -58,7 +68,7 @@ func (sbsc *subscriber) initialise(privateKey []byte, publicKey []byte, connecti
 	for i, c := range connections {
 		address, err := util.NewConnection(c.Subscribe)
 		if nil != err {
-			log.WithFields(logrus.Fields{
+			sbsc.log.WithFields(logrus.Fields{
 				"address": c.Subscribe,
 				"error":   err,
 			}).Error("client connection fail")
@@ -67,7 +77,7 @@ func (sbsc *subscriber) initialise(privateKey []byte, publicKey []byte, connecti
 		}
 		serverPublicKey, err := hex.DecodeString(c.PublicKey)
 		if nil != err {
-			log.WithFields(logrus.Fields{
+			sbsc.log.WithFields(logrus.Fields{
 				"public key": c.PublicKey,
 				"error":      err,
 			}).Error("decode connection fail")
@@ -78,7 +88,7 @@ func (sbsc *subscriber) initialise(privateKey []byte, publicKey []byte, connecti
 		// prevent connection to self
 		if bytes.Equal(publicKey, serverPublicKey) {
 			errX = fault.ErrConnectingToSelfForbidden
-			log.WithFields(logrus.Fields{
+			sbsc.log.WithFields(logrus.Fields{
 				"public key": c.PublicKey,
 				"error":      err,
 			}).Error("connec to self")
@@ -87,7 +97,7 @@ func (sbsc *subscriber) initialise(privateKey []byte, publicKey []byte, connecti
 
 		client, err := zmqutil.NewClient(zmq.SUB, privateKey, publicKey, 0)
 		if nil != err {
-			log.WithFields(logrus.Fields{
+			sbsc.log.WithFields(logrus.Fields{
 				"client": c.Subscribe,
 				"error":  err,
 			}).Error("create client fail")
@@ -99,14 +109,14 @@ func (sbsc *subscriber) initialise(privateKey []byte, publicKey []byte, connecti
 
 		err = client.Connect(address, serverPublicKey, mode.ChainName())
 		if nil != err {
-			log.WithFields(logrus.Fields{
+			sbsc.log.WithFields(logrus.Fields{
 				"client": c.Subscribe,
 				"error":  err,
 			}).Error("connec fail")
 			errX = err
 			goto fail
 		}
-		log.Infof("public key: %x  at: %q", serverPublicKey, c.Subscribe)
+		sbsc.log.Infof("public key: %x  at: %q", serverPublicKey, c.Subscribe)
 	}
 
 	return nil
@@ -118,9 +128,9 @@ fail:
 }
 
 // subscriber main loop
-func (sbsc *subscriber) Run(shutdown <-chan struct{}) {
+func (sbsc *subscriberData) Run(shutdown <-chan struct{}) {
 
-	log.Info("starting…")
+	sbsc.log.Info("starting…")
 
 	go func() {
 
@@ -138,7 +148,7 @@ func (sbsc *subscriber) Run(shutdown <-chan struct{}) {
 
 	loop:
 		for {
-			log.Info("waiting…")
+			sbsc.log.Info("waiting…")
 
 			//polled, _ := poller.Poll(-1)
 			polled, _ := poller.Poll(heartbeatTimeout)
@@ -166,7 +176,7 @@ func (sbsc *subscriber) Run(shutdown <-chan struct{}) {
 								"socket": s.String,
 								"type":   "subscriber",
 							}).Error("cannot find client from list")
-							log.Info("expiry list:")
+							sbsc.log.Info("expiry list:")
 							for k, v := range expiryRegister {
 								logrus.WithFields(logrus.Fields{
 									"socket":      k.String,
@@ -176,7 +186,7 @@ func (sbsc *subscriber) Run(shutdown <-chan struct{}) {
 							}
 							delete(expiryRegister, s)
 						} else if client.IsConnected() {
-							log.Infof("client %s reconnect to remote", client.BasicInfo())
+							sbsc.log.Infof("client %s reconnect to remote", client.BasicInfo())
 							logrus.WithFields(logrus.Fields{
 								"client": client.BasicInfo(),
 								"type":   "subscriber",
@@ -214,31 +224,31 @@ func (sbsc *subscriber) Run(shutdown <-chan struct{}) {
 						checkAt = expires
 					}
 				}
-				log.Info("finish timeout processing")
+				sbsc.log.Info("finish timeout processing")
 			}
 
 			for _, p := range polled {
 				switch s := p.Socket; s {
 				case sbsc.pull:
-					log.Info("checking terminate signal")
+					sbsc.log.Info("checking terminate signal")
 					_, err := s.RecvMessageBytes(0)
-					log.Info("receive terminate signal")
+					sbsc.log.Info("receive terminate signal")
 					if nil != err {
 						logrus.WithFields(logrus.Fields{
 							"error": err,
 							"type":  "subscriber",
 						}).Error("pull receiver error")
 					}
-					log.Info("finish checking terminate signal")
+					sbsc.log.Info("finish checking terminate signal")
 					break loop
 
 				default:
 					logrus.WithFields(logrus.Fields{
 						"socket": s.String(),
 					}).Info("socket info")
-					log.Info("checking bitmarkd poller socket")
+					sbsc.log.Info("checking bitmarkd poller socket")
 					data, err := s.RecvMessageBytes(0)
-					log.Info("receive message from socket")
+					sbsc.log.Info("receive message from socket")
 					if nil != err {
 						logrus.WithFields(logrus.Fields{
 							"error": err,
@@ -246,14 +256,14 @@ func (sbsc *subscriber) Run(shutdown <-chan struct{}) {
 						}).Error("receive error")
 					} else {
 						client := zmqutil.ClientFromSocket(s)
-						log.Info("process received data")
+						sbsc.log.Info("process received data")
 						sbsc.process(data[1:], client)
-						log.Info("finish process incoming data")
+						sbsc.log.Info("finish process incoming data")
 					}
 					expiryRegister[s] = expiresAt
 				}
 			}
-			log.Info("finish checking poller")
+			sbsc.log.Info("finish checking poller")
 		}
 		sbsc.pull.Close()
 		zmqutil.CloseClients(sbsc.clients)
@@ -261,7 +271,7 @@ func (sbsc *subscriber) Run(shutdown <-chan struct{}) {
 
 loop:
 	for {
-		log.Info("select…")
+		sbsc.log.Info("select…")
 
 		select {
 		// wait for shutdown
@@ -276,7 +286,7 @@ loop:
 }
 
 // process the received subscription
-func (sbsc *subscriber) process(data [][]byte, client *zmqutil.Client) {
+func (sbsc *subscriberData) process(data [][]byte, client *zmqutil.Client) {
 
 	logrus.WithFields(logrus.Fields{
 		"client": client.BasicInfo(),

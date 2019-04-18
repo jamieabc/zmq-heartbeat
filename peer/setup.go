@@ -8,6 +8,11 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+type Peer interface {
+	Initialise(configuration *Configuration) error
+	Finalise()
+}
+
 type Connection struct {
 	PublicKey string `gluamapper:"public_key" json:"public_key"`
 	Subscribe string `gluamapper:"subscribe" json:"subscribe"`
@@ -21,39 +26,45 @@ type Configuration struct {
 }
 
 type peerData struct {
-	sync.RWMutex // to allow locking
+	sync.RWMutex
 
-	sbsc subscriber // for subscriptions
+	sbsc     Subscriber
+	log      *logrus.Entry
+	shutdown chan struct{}
 }
 
-// global data
-var globalData peerData
-var log = logrus.New().WithFields(logrus.Fields{
-	"type": "subscriber",
-})
-var shutdown chan struct{}
-
-func Initialise(configuration *Configuration) error {
+func NewPeer() Peer {
 	logrus.SetOutput(os.Stdout)
-	logrus.SetReportCaller(true)
 	logrus.SetFormatter(&logrus.TextFormatter{
-		DisableTimestamp: false,
-		FullTimestamp:    true,
+		FullTimestamp: true,
 	})
 
-	globalData.Lock()
-	defer globalData.Unlock()
+	log := logrus.New().WithFields(logrus.Fields{
+		"type": "subscriber",
+	})
 
-	log.Info("starting…")
+	return &peerData{
+		log:      log,
+		shutdown: make(chan struct{}),
+		sbsc:     NewSubscriber(log),
+	}
+}
 
-	log.WithFields(logrus.Fields{
+func (p *peerData) Initialise(configuration *Configuration) error {
+
+	p.Lock()
+	defer p.Unlock()
+
+	p.log.Info("starting…")
+
+	p.log.WithFields(logrus.Fields{
 		"data": configuration,
 	}).Info("configuration")
 
 	// read the keys
 	privateKey, err := zmqutil.ReadPrivateKey(configuration.PrivateKey)
 	if nil != err {
-		log.WithFields(logrus.Fields{
+		p.log.WithFields(logrus.Fields{
 			"private key": configuration.PrivateKey,
 			"error":       err,
 		}).Error("read private key fail")
@@ -61,32 +72,30 @@ func Initialise(configuration *Configuration) error {
 	}
 	publicKey, err := zmqutil.ReadPublicKey(configuration.PublicKey)
 	if nil != err {
-		log.WithFields(logrus.Fields{
+		p.log.WithFields(logrus.Fields{
 			"public key": configuration.PublicKey,
 			"error":      err,
 		}).Error("read public key file")
 		return err
 	}
-	log.WithFields(logrus.Fields{
+	p.log.WithFields(logrus.Fields{
 		"private key": privateKey,
 	}).Info("peer private key")
-	log.WithFields(logrus.Fields{
+	p.log.WithFields(logrus.Fields{
 		"public key": publicKey,
 	}).Info("peer public key")
 
-	if err := globalData.sbsc.initialise(privateKey, publicKey, configuration.Node); nil != err {
+	if err := p.sbsc.Initialise(privateKey, publicKey, configuration.Node); nil != err {
 		return err
 	}
 
-	shutdown = make(chan struct{})
-
 	go func() {
-		globalData.sbsc.Run(shutdown)
+		p.sbsc.Run(p.shutdown)
 	}()
 
 	return nil
 }
 
-func Finalise() {
-	shutdown <- struct{}{}
+func (p *peerData) Finalise() {
+	p.shutdown <- struct{}{}
 }
