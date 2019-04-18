@@ -14,17 +14,14 @@ const (
 	defaultFile = "updaterd.conf"
 )
 
-var (
-	log = logrus.New().WithFields(logrus.Fields{
-		"type": "main",
-	})
-)
-
 func main() {
 	logrus.SetOutput(os.Stdout)
 	logrus.SetFormatter(&logrus.TextFormatter{
-		DisableTimestamp: false,
-		FullTimestamp:    true,
+		FullTimestamp: true,
+	})
+
+	log := logrus.New().WithFields(logrus.Fields{
+		"type": "main",
 	})
 
 	configurationFile := defaultFile
