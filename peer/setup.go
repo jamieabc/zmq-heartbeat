@@ -55,11 +55,7 @@ func (p *peerData) Initialise(configuration *Configuration) error {
 	p.Lock()
 	defer p.Unlock()
 
-	p.log.Info("starting…")
-
-	p.log.WithFields(logrus.Fields{
-		"data": configuration,
-	}).Info("configuration")
+	p.log.Info("start")
 
 	// read the keys
 	privateKey, err := zmqutil.ReadPrivateKey(configuration.PrivateKey)
@@ -78,12 +74,6 @@ func (p *peerData) Initialise(configuration *Configuration) error {
 		}).Error("read public key file")
 		return err
 	}
-	p.log.WithFields(logrus.Fields{
-		"private key": privateKey,
-	}).Info("peer private key")
-	p.log.WithFields(logrus.Fields{
-		"public key": publicKey,
-	}).Info("peer public key")
 
 	if err := p.sbsc.Initialise(privateKey, publicKey, configuration.Node); nil != err {
 		return err
@@ -97,5 +87,6 @@ func (p *peerData) Initialise(configuration *Configuration) error {
 }
 
 func (p *peerData) Finalise() {
+	p.log.Info("terminating subscriber")
 	p.shutdown <- struct{}{}
 }

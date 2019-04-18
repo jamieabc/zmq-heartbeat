@@ -42,7 +42,7 @@ func NewSubscriber(log *logrus.Entry) Subscriber {
 // initialise the subscriber
 func (sbsc *subscriberData) Initialise(privateKey []byte, publicKey []byte, connections []Connection) error {
 
-	sbsc.log.Info("initialising…")
+	sbsc.log.Info("initialising")
 
 	// validate connection count
 	connectionCount := len(connections)
@@ -130,7 +130,7 @@ fail:
 // subscriber main loop
 func (sbsc *subscriberData) Run(shutdown <-chan struct{}) {
 
-	sbsc.log.Info("starting…")
+	sbsc.log.Info("start to run")
 
 	go func() {
 
@@ -148,7 +148,7 @@ func (sbsc *subscriberData) Run(shutdown <-chan struct{}) {
 
 	loop:
 		for {
-			sbsc.log.Info("waiting…")
+			sbsc.log.Info("waiting")
 
 			//polled, _ := poller.Poll(-1)
 			polled, _ := poller.Poll(heartbeatTimeout)
@@ -161,7 +161,7 @@ func (sbsc *subscriberData) Run(shutdown <-chan struct{}) {
 					"current time":  now.String(),
 					"next check":    checkAt.String(),
 					"type":          "subscriber",
-				}).Info("timeout exceed")
+				}).Warn("timeout exceed")
 
 				checkAt = expiresAt
 				for s, expires := range expiryRegister {

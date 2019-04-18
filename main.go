@@ -39,7 +39,7 @@ func main() {
 		return
 	}
 
-	log.Info("starting...")
+	log.Info("program start")
 
 	log.WithFields(logrus.Fields{
 		"mode": masterConfiguration.Chain,
